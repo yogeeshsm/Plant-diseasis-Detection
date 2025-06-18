@@ -44,7 +44,7 @@ Dataset can be downloaded form [kaggle](https://www.kaggle.com/abdallahalidev/pl
 			   - Grape___Leaf_blight_Isariopsis_Leaf_Spot 
 ---
 ## Cloning the project  
-* Run command `git clone "https://github.com/Saideepthi123/Plant-disease-detection.git"` and change into the project folder
+* Run command `git clone "https://github.com/yogeeshsm/Plant-disease-detection.git"` and change into the project folder
 * Create a virtual environment `env` in the repository (use virtualenv, etc)
 *  Activate virtual environment
 * Install the requirements
