@@ -18,11 +18,11 @@ CLASSIFICATION_MODEL_PATH = './object_classification/rps.h5'
 UPLOAD_PATH = './uploads/temp_image.jpg'
 NUM_CLASSES = 6
 CLASS_LABELS = [
-    'Apple___Apple_scab','Apple___Black_rot','Apple___Cedar_apple_rust','Apple___healthy','Blueberry___healthy',
-    'Cherry___healthy','Cherry___Powdery_mildew','Grape___Black_rot','Grape___Esca_Black_Measles','Grape___healthy',
-    'Grape___Leaf_blight_Isariopsis_Leaf_Spot','Orange___Haunglongbing','Peach___Bacterial_spot','Peach___healthy',
-    'Pepper_bell___Bacterial_spot','Pepper_bell___healthy','Potato___Early_blight','Potato___healthy','Potato___Late_blight',
-    'Raspberry___healthy','Soybean___healthy','Squash___Powdery_mildew','Strawberry___healthy','Strawberry___Leaf_scorch'
+    'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy', 'Blueberry___healthy',
+    'Cherry___healthy', 'Cherry___Powdery_mildew', 'Grape___Black_rot', 'Grape___Esca_Black_Measles', 'Grape___healthy',
+    'Grape___Leaf_blight_Isariopsis_Leaf_Spot', 'Orange___Haunglongbing', 'Peach___Bacterial_spot', 'Peach___healthy',
+    'Pepper_bell___Bacterial_spot', 'Pepper_bell___healthy', 'Potato___Early_blight', 'Potato___healthy', 'Potato___Late_blight',
+    'Raspberry___healthy', 'Soybean___healthy', 'Squash___Powdery_mildew', 'Strawberry___healthy', 'Strawberry___Leaf_scorch'
 ]
 
 # --- CACHED MODEL LOADERS ---
@@ -70,19 +70,33 @@ def save_uploaded_image(uploaded_file):
 # --- DETECTION ---
 def run_detection(image_path, detection_graph, sess):
     label_map = label_map_util.load_labelmap(LABELMAP_PATH)
-    categories = label_map_util.convert_label_map_to_categories(label_map, max_num_classes=NUM_CLASSES, use_display_name=True)
+    categories = label_map_util.convert_label_map_to_categories(
+        label_map, max_num_classes=NUM_CLASSES, use_display_name=True
+    )
     category_index = label_map_util.create_category_index(categories)
+    
+    # Read and process image
     image_np = cv2.imread(image_path)
+    if image_np is None:
+        raise ValueError(f"Could not read image at {image_path}")
+    
     image_rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
     image_expanded = np.expand_dims(image_rgb, axis=0)
+    
+    # Get tensors
     image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
     detection_boxes = detection_graph.get_tensor_by_name('detection_boxes:0')
     detection_scores = detection_graph.get_tensor_by_name('detection_scores:0')
     detection_classes = detection_graph.get_tensor_by_name('detection_classes:0')
     num_detections = detection_graph.get_tensor_by_name('num_detections:0')
+    
+    # Run detection
     (boxes, scores, classes, num) = sess.run(
         [detection_boxes, detection_scores, detection_classes, num_detections],
-        feed_dict={image_tensor: image_expanded})
+        feed_dict={image_tensor: image_expanded}
+    )
+    
+    # Visualization
     vis_util.visualize_boxes_and_labels_on_image_array(
         image_np,
         np.squeeze(boxes),
@@ -91,12 +105,15 @@ def run_detection(image_path, detection_graph, sess):
         category_index,
         use_normalized_coordinates=True,
         line_thickness=8,
-        min_score_thresh=0.60)
-    return image_np
+        min_score_thresh=0.60
+    )
+    
+    # Convert back to RGB for display
+    return cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
 
 # --- CLASSIFICATION ---
 def run_classification(image_path, model):
-    img = image.load_img(image_path, target_size=(150,150))
+    img = image.load_img(image_path, target_size=(150, 150))
     x = image.img_to_array(img)
     x = np.expand_dims(x, axis=0)
     images = np.vstack([x])
@@ -106,52 +123,59 @@ def run_classification(image_path, model):
 
 # --- STREAMLIT APP ---
 def main():
-    st.set_option('deprecation.showfileUploaderEncoding', False)
+    st.set_page_config(page_title="Plant Disease Detection", layout="wide")
     st.title("Plant Disease Detection & Classification")
     st.text("Built with Streamlit and Tensorflow")
 
     activities = ["About", "Plant Disease"]
     choice = st.sidebar.selectbox("Select Activity", activities)
-    enhance_type = st.sidebar.radio("Type", ["Detection", "Classification", "Treatment"])
+    
+    # Only show type selector when Plant Disease is selected
+    if choice == "Plant Disease":
+        enhance_type = st.sidebar.radio("Type", ["Detection", "Classification", "Treatment"])
+    else:
+        enhance_type = None
+
+    # Load models only when needed
+    if choice == "Plant Disease" and enhance_type in ["Detection", "Classification"]:
+        detection_graph, detection_sess = load_detection_model()
+        classification_model = load_classification_model()
 
     if choice == "About":
         intro_markdown = read_markdown_file("./doc/about.md")
         st.markdown(intro_markdown, unsafe_allow_html=True)
 
-    # Load models once
-    detection_graph, detection_sess = load_detection_model()
-    classification_model = load_classification_model()
+    if choice == "Plant Disease":
+        if enhance_type == "Detection":
+            st.header("Plant Disease Detection")
+            image_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
+            st.markdown("* * *")
+            if image_file is not None:
+                img_path = save_uploaded_image(image_file)
+                st.image(img_path, caption="Uploaded Image", use_column_width=True)
+                if st.button('Process'):
+                    detected_img = run_detection(img_path, detection_graph, detection_sess)
+                    st.image(detected_img, caption="Detection Result", use_column_width=True)
+                    st.balloons()
 
-    if choice == "Plant Disease" and enhance_type == "Detection":
-        st.header("Plant Disease Detection")
-        image_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
-        st.markdown("* * *")
-        if image_file is not None:
-            img_path = save_uploaded_image(image_file)
-            st.image(img_path, caption="Uploaded Image", use_column_width=True)
-            if st.button('Process'):
-                detected_img = run_detection(img_path, detection_graph, detection_sess)
-                st.image(cv2.cvtColor(detected_img, cv2.COLOR_BGR2RGB), caption="Detection Result", use_column_width=True)
-                st.balloons()
+        elif enhance_type == "Classification":
+            st.header("Plant Disease Classification")
+            image_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
+            st.markdown("* * *")
+            if image_file is not None:
+                img_path = save_uploaded_image(image_file)
+                st.image(img_path, caption="Uploaded Image", use_column_width=True)
+                if st.button('Classify'):
+                    with st.spinner('Classifying...'):
+                        result = run_classification(img_path, classification_model)
+                        time.sleep(2)
+                    st.success(f"**Detected Disease:** {result}")
+                    st.balloons()
 
-    if choice == "Plant Disease" and enhance_type == "Classification":
-        st.header("Plant Disease Classification")
-        image_file = st.file_uploader("Upload Image", type=['jpg', 'jpeg', 'png'])
-        st.markdown("* * *")
-        if image_file is not None:
-            img_path = save_uploaded_image(image_file)
-            st.image(img_path, caption="Uploaded Image", use_column_width=True)
-            if st.button('Classify'):
-                with st.spinner('Classifying...'):
-                    result = run_classification(img_path, classification_model)
-                    time.sleep(2)
-                st.success(f"**Detected Disease:** {result}")
-                st.balloons()
-
-    if choice == "Plant Disease" and enhance_type == "Treatment":
-        st.header("Plant Disease Treatment")
-        data_markdown = read_markdown_file("./treatment/treatment.md")
-        st.markdown(data_markdown, unsafe_allow_html=True)
+        elif enhance_type == "Treatment":
+            st.header("Plant Disease Treatment")
+            data_markdown = read_markdown_file("./treatment/treatment.md")
+            st.markdown(data_markdown, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
